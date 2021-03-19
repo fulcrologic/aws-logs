@@ -1,0 +1,4 @@
+*.swp
+.idea/
+.nrepl-port
+aws-logs.iml

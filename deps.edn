@@ -1,0 +1,4 @@
+{:deps {com.taoensso/timbre                   {:mvn/version "5.0.0"}
+        cheshire/cheshire                     {:mvn/version "5.10.0"}
+        com.amazonaws/aws-java-sdk-cloudwatch {:mvn/version "1.11.826"}
+        com.amazonaws/aws-java-sdk-logs       {:mvn/version "1.11.826"}}}
