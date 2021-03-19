@@ -83,11 +83,11 @@
           (do
             (swap! results into
               (map (fn [^OutputLogEvent evt]
-                     (let [raw-message (parse-string (.getMessage evt) (comp keyword str/lower-case))]
+                     (let [raw-message (.getMessage evt)]
                        (try
-                         (update raw-message :timestamp #(Date. (long %)))
+                         (update (parse-string raw-message (comp keyword str/lower-case)) :timestamp #(Date. (long %)))
                          (catch Exception e
-                           (println "Cannot format timestamp on log message: " (.getMessage e))
+                           (println "Cannot format message: " (.getMessage e))
                            raw-message)))))
               (.getEvents result))
             (recur next-token (.getLogEvents client (req token)))))))))
@@ -150,12 +150,14 @@
                                    (recur next-token (.getLogEvents client (req next-token))))
             :else (let [events (.getEvents result)]
                     (doseq [^OutputLogEvent evt events]
-                      (let [raw-message (parse-string (.getMessage evt) (comp keyword str/lower-case))
-                            {:keys [level] :as msg} (try
-                                                      (update raw-message :timestamp #(Date. (long %)))
-                                                      (catch Exception _ raw-message))]
-                        (when (or include-stdout? level)
-                          (action stream msg))))
+                      (try
+                        (let [raw-message (parse-string (.getMessage evt) (comp keyword str/lower-case))
+                              {:keys [level] :as msg} (try
+                                                        (update raw-message :timestamp #(Date. (long %)))
+                                                        (catch Exception _ raw-message))]
+                          (when (or include-stdout? level)
+                            (action stream msg)))
+                        (catch Exception _ (println "log event not understood" (.getMessage evt)))))
                     (Thread/sleep 2000)
                     (recur next-token (.getLogEvents client (req token)))))))
       (catch Exception e
