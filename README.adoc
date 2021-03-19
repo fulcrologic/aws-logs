@@ -6,12 +6,26 @@ Clojure that can be used to deal with logging concerns is nice.
 
 == Usage
 
-Add an alias to your Deps
+Add an alias to your deps:
+
 [source, clojure]
 -----
- :aliases {:watch {:extra-deps {com.fulcrologic/aws-logs "2021"}
-                   :replace-deps {com.fulcrologic/aws-logs {:mvn/version "2.0.206"}}
+ :aliases {:watch {:replace-deps {com.fulcrologic/aws-logs {:git/url "git@github.com:fulcrologic/aws-logs.git"
+                                                            :git/sha "latest"}}
                    :exec-fn   com.fulcrologic.aws-logs.log-access/watch
-                   :exec-args {:log-group    "datomic-dataico"
-                               :strip-prefix "dataico-dataico"}}}}
+                   :exec-args {:log-group    "name-of-aws-log-group"
+                               ;; optional
+                               :include-stdout? false
+                               :strip-prefix "text-to-strip-from-front-of-stream-names"}}}
 -----
+
+`:log-group` is the name of an AWS log group, such as `datomic-my-sys-name`. The `:strip-prefix` is text to strip
+from the front of log stream names. Streams that have an instance ID on them will be shortened as well to help
+with log readability.
+
+If the log events include `:level`, then they are considered part of your "normal" logs; otherwise the messages are
+considered part of the instance STDOUT. By default stdout is NOT shown. If you want to include it, then set include-stdout? to true.
+
+== REPL Usage
+
+The `log-access` namespace has various functions. See the docstrings for more info.

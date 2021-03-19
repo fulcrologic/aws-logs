@@ -1,7 +1,3 @@
-{:deps    {cheshire/cheshire                     {:mvn/version "5.10.0"}
-           com.amazonaws/aws-java-sdk-cloudwatch {:mvn/version "1.11.826"}
-           com.amazonaws/aws-java-sdk-logs       {:mvn/version "1.11.826"}}
- :aliases {:watch {:exec-fn   com.fulcrologic.aws-logs.log-access/watch
-                   :exec-args {:log-group    "datomic-dataico"
-                               :strip-prefix "dataico-dataico"}}}
- }
+{:deps {cheshire/cheshire                     {:mvn/version "5.10.0"}
+        com.amazonaws/aws-java-sdk-cloudwatch {:mvn/version "1.11.826"}
+        com.amazonaws/aws-java-sdk-logs       {:mvn/version "1.11.826"}}}
