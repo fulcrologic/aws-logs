@@ -3,6 +3,7 @@
     [cheshire.core :refer [parse-string]]
     [clojure.string :as str])
   (:import
+    (com.joestelmach.natty Parser DateGroup)
     (com.amazonaws.services.logs AWSLogsClientBuilder AWSLogsClient)
     (com.amazonaws.services.logs.model DescribeLogStreamsRequest LogStream GetLogEventsRequest OutputLogEvent)
     (java.util Date)
@@ -59,7 +60,10 @@
 (defn get-log-events
   "Given a {:group grp :stream stream-name}, and a start and end time (in ms, use `inst-ms`),
    returns the log events between those two timestamps. The raw log JSON will be decoded into
-   EDN maps (lower-case keys), and the message timestamps will be converted to `inst?`."
+   EDN maps (lower-case keys), and the message timestamps will be converted to `inst?`.
+
+   You probably want `get-logs` or `show-logs`.
+   "
   [{:keys [group stream]} start-time end-time]
   (let [req     (fn [token]
                   (-> (GetLogEventsRequest.)
@@ -182,3 +186,89 @@
       (doseq [f futures]
         (deref f)))))
 
+(defn parse-date [s]
+  (first
+    (mapcat
+      (fn [^DateGroup grp]
+        (.getDates grp))
+      (.parse (Parser.) s))))
+
+(defn get-logs
+  "Get the events from the given log-group over the specified time range, and call `action` `(fn [stream message-map])` on each
+   (which is assumed to side-effect).
+
+   log-group - The name of the log group to pull from
+   start - The start time. Supports natural language (e.g. \"1 hour ago\"). See http://natty.joestelmach.com/try.jsp. Defaults to \"5 minutes ago\"
+   end - The end time. Supports natural language. See http://natty.joestelmach.com/try.jsp. Default to \"now\".
+   include-stdout? - Include messages that have no log level.
+
+   If you use something like `1 pm` then the JVM will use your locale to properly offset the time. Use `1pm UTC` if you really
+   mean UTC.
+
+   This function must sort the resulting log messages in RAM, so do not grab too many log messages at once!
+   "
+  [{:keys [log-group
+           start
+           end
+           include-stdout?]
+    :or   {start "5 minutes ago"
+           end   "now"}}]
+  (let [start-inst         (parse-date start)
+        end-inst           (parse-date end)
+        streams            (recent-streams log-group)
+        beginning-of-time  (Date. 0)
+        compare-timestamps (fnil compare beginning-of-time beginning-of-time)]
+    (when-not (and (inst? start-inst) (inst? end-inst))
+      (throw (ex-info "Invalid start/end time" {})))
+    (when-not (seq streams)
+      (println "No streams found."))
+    (sort-by :timestamp compare-timestamps
+      (into []
+        (comp
+          (mapcat
+            (fn [stream-group]
+              (map
+                (fn [m] (assoc m :stream (:stream stream-group)))
+                (get-log-events stream-group (inst-ms start-inst) (inst-ms end-inst)))))
+          (filter (fn [{:keys [level timestamp]}] (and timestamp (or level include-stdout?)))))
+        streams))))
+
+
+(defn show-logs
+  "Like watch, but over a fixed time range. Default side-effect is to print to stdout.
+
+   log-group - The name of the log group to pull from. Pulls from all streams that have recent (less than 1 hour ago) events.
+   start - The start time. Supports natural language (e.g. \"1 hour ago\"). See http://natty.joestelmach.com/try.jsp. Defaults to \"5 minutes ago\"
+   end - The end time. Supports natural language. See http://natty.joestelmach.com/try.jsp. Default to \"now\".
+   include-stdout? - Include message that do not have a log level (appear to be from stdout)
+   strip-prefix - When showing the log message, strip the given prefix from the stream name
+   action - An (optional) `(fn [{:keys [stream msg type timestamp ...]}])`. Assumed to side-effect. Defaults to emitting
+     the events to *out*.
+
+  Side-effects on `action` for each event.
+  "
+  [{:keys [log-group
+           start
+           end
+           include-stdout?
+           strip-prefix
+           action]
+    :or   {start           "5 minutes ago"
+           end             "now"
+           include-stdout? false}
+    :as   options}]
+  (let [options (update options :include-stdout? boolean)
+        action  (or action
+                  (fn [{:keys [stream] :as msg}]
+                    (let [nm (cond-> (str/replace stream #"-i-(.......).*$" "-$1")
+                               strip-prefix (str/replace strip-prefix ""))]
+                      (println (format-log-message nm msg)))))
+        events  (get-logs options)]
+    (doseq [evt events]
+      (action evt))))
+
+(comment
+  (show-logs {:log-group    "datomic-dataico" :start "1pm" :end "1:01pm"
+              :strip-prefix "dataico-dataico"})
+  (parse-date "1pm UTC")
+  )
