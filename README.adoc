@@ -1,0 +1,17 @@
+== AWS Log Helpers
+
+There is a general CLI called `saw` that works reasonably well, but I needed something that
+was easier to tune. The AWS API is pretty easy to work with, so having something in
+Clojure that can be used to deal with logging concerns is nice.
+
+== Usage
+
+Add an alias to your Deps
+[source, clojure]
+-----
+ :aliases {:watch {:extra-deps {com.fulcrologic/aws-logs "2021"}
+                   :replace-deps {com.fulcrologic/aws-logs {:mvn/version "2.0.206"}}
+                   :exec-fn   com.fulcrologic.aws-logs.log-access/watch
+                   :exec-args {:log-group    "datomic-dataico"
+                               :strip-prefix "dataico-dataico"}}}}
+-----

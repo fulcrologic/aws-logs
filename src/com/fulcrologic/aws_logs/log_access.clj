@@ -1,16 +1,14 @@
-(ns com.fulcrologic.aws-logs.access
+(ns com.fulcrologic.aws-logs.log-access
   (:require
     [cheshire.core :refer [parse-string]]
-    [taoensso.timbre :as log]
     [clojure.string :as str])
-  (:import (com.amazonaws.services.logs AWSLogsClientBuilder AWSLogsClient)
-           (com.amazonaws.services.logs.model DescribeLogGroupsResult LogGroup DescribeLogStreamsRequest LogStream DescribeLogStreamsResult GetLogEventsRequest GetLogEventsResult OutputLogEvent)
-           (java.util Date)
-           (java.text SimpleDateFormat)))
+  (:import
+    (com.amazonaws.services.logs AWSLogsClientBuilder AWSLogsClient)
+    (com.amazonaws.services.logs.model DescribeLogStreamsRequest LogStream GetLogEventsRequest OutputLogEvent)
+    (java.util Date)
+    (java.text SimpleDateFormat)))
 
-(log/set-level! :info)
-
-(def ^AWSLogsClient client (AWSLogsClientBuilder/defaultClient))
+(defonce ^AWSLogsClient client (AWSLogsClientBuilder/defaultClient))
 
 (defn describe-log-streams
   ([group] (describe-log-streams group nil nil))
@@ -63,7 +61,7 @@
                        (try
                          (update raw-message :timestamp #(Date. (long %)))
                          (catch Exception e
-                           (log/error e)
+                           (println "Cannot format timestamp on log message: " (.getMessage e))
                            raw-message)))))
               (.getEvents result))
             (recur next-token (.getLogEvents client (req token)))))))))
@@ -84,11 +82,13 @@
         (str/upper-case (or level "STDOUT"))
         msg))))
 
-(defn watch-log-events [running-atom? {:keys [group stream]} {:keys [action
-                                                                     include-stdout?]
-                                                              :or   {include-stdout? false
-                                                                     action          (fn [msg]
-                                                                                       (println (format-log-message "" msg)))}}]
+(defn watch-log-events [running-atom?
+                        {:keys [group stream]}
+                        {:keys [action
+                                include-stdout?]
+                         :or   {include-stdout? false
+                                action          (fn [stream msg]
+                                                  (println (format-log-message stream msg)))}}]
   (let [req (fn [token]
               (-> (GetLogEventsRequest.)
                 (cond->
@@ -113,25 +113,46 @@
                                                       (update raw-message :timestamp #(Date. (long %)))
                                                       (catch Exception _ raw-message))]
                         (when (or include-stdout? level)
-                          (action msg))))
+                          (action stream msg))))
                     (Thread/sleep 2000)
                     (recur next-token (.getLogEvents client (req token)))))))
       (catch Exception e
-        (log/error e "WATCHER DIED")))))
+        (println "WATCHER DIED" (.getMessage e))))))
 
+(defn watch [{:keys [log-group
+                     include-stdout?
+                     strip-prefix]}]
+  (when-not (string? log-group)
+    (println ":log-group required")
+    (System/exit 1))
+  (let [running? (atom true)
+        streams  (recent-streams log-group)]
+    (println "Found the following streams:\n" streams)
+    (let [futures (mapv (fn [strm]
+                          (future
+                            (watch-log-events running? strm
+                              {:include-stdout? (boolean include-stdout?)
+                               :action          (fn [stream-name msg]
+                                                  (let [nm (cond-> (str/replace stream-name #"-i-(.......).*$" "-$1")
+                                                             strip-prefix (str/replace strip-prefix ""))]
+                                                    (println (format-log-message nm msg))))})
+                            true))
+                    streams)]
+      (doseq [f futures]
+        (deref f)))))
 
 (comment
   (recent-streams "datomic-dataico")
 
   (def running-atom? (atom true))
 
-  (doseq [{:keys [group stream] :as strm} (recent-streams "datomic-dataico")
-          :let [nm (-> stream
-                     (str/replace #"-i-(.......).*$" "-$1")
-                     (str/replace #"^dataico-dataico-" ""))]]
+  (doseq [{:keys [group stream] :as strm} (recent-streams "datomic-dataico")]
     (future
-      (watch-log-events running-atom? strm {:action (fn [msg]
-                                                      (println (format-log-message nm msg)))})))
+      (watch-log-events running-atom? strm {:action (fn [stream-name msg]
+                                                      (let [nm (-> stream-name
+                                                                 (str/replace #"-i-(.......).*$" "-$1")
+                                                                 (str/replace #"^dataico-dataico-" ""))]
+                                                        (println (format-log-message nm msg))))})))
 
   (reset! running-atom? false)
 
