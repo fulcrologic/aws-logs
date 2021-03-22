@@ -230,7 +230,10 @@
           (mapcat
             (fn [stream-group]
               (map
-                (fn [m] (assoc m :stream (:stream stream-group)))
+                (fn [m] (if (map? m)
+                          (assoc m :stream (:stream stream-group))
+                          {:stream (:stream stream-group)
+                           :message m}))
                 (get-log-events stream-group (inst-ms start-inst) (inst-ms end-inst)))))
           (filter (fn [{:keys [level timestamp]}] (and timestamp (or level include-stdout?)))))
         streams))))
@@ -270,7 +273,7 @@
       (action evt))))
 
 (comment
-  (show-logs {:log-group    "datomic-dataico" :start "1pm" :end "1:01pm"
-              :strip-prefix "dataico-dataico"})
+  (get-logs {:log-group    "datomic-dataico" :start "3:50pm" :end "4pm"
+              :strip-prefix "dataico-dataico" :include-stdout? true})
   (parse-date "1pm UTC")
   )
